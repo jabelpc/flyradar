@@ -1,0 +1,8 @@
+esp32-c3 super mini // LCD 1,28' GC9A01
+3V3 // VCC
+GND // GND
+GPIO4 // SCL
+GPIO5 // SDA
+GPIO9 // DC
+GPIO6 // CS
+GPIO3 //RST
