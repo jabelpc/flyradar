@@ -8,7 +8,7 @@ static constexpr const char* GitHubOwner = "jabelpc";
 static constexpr const char* GitHubRepo = "flyradar";
 static constexpr const char* GitHubBinAssetName = "flyradar.bin";
 static constexpr const char* GitHubUserAgent = "FlyRadarOTA/1.0";
-static constexpr const char* CurrentFirmwareVersion = "1.0.0";
+static constexpr const char* CurrentFirmwareVersion = "1.0.1";
 
 struct GitHubReleaseInfo {
     bool success;
@@ -54,7 +54,6 @@ static int CompareVersions(const String& a, const String& b)
 
     return 0;
 }
-
 static GitHubReleaseInfo FetchLatestGithubRelease()
 {
     // If the repo owner/repo are left as placeholders, return a clear error
@@ -65,6 +64,7 @@ static GitHubReleaseInfo FetchLatestGithubRelease()
     const String apiUrl = String("https://api.github.com/repos/") + GitHubOwner + "/" + GitHubRepo + "/releases/latest";
     http.begin(apiUrl);
     http.addHeader("User-Agent", GitHubUserAgent);
+    http.addHeader("Accept", "application/vnd.github+json");
     http.setFollowRedirects(HTTPC_STRICT_FOLLOW_REDIRECTS);
 
     const int responseCode = http.GET();
@@ -75,12 +75,23 @@ static GitHubReleaseInfo FetchLatestGithubRelease()
     }
 
     const String payload = http.getString();
+    Serial.println(String("[OTA] GitHub response length: ") + payload.length());
+    if (payload.isEmpty()) {
+        Serial.println("[OTA] GitHub payload is empty");
+    }
     http.end();
 
     DynamicJsonDocument doc(8192);
     const DeserializationError parseError = deserializeJson(doc, payload);
     if (parseError) {
-        return {false, "", "", String("JSON parse error: ") + parseError.c_str()};
+        Serial.println(String("[OTA] GitHub JSON parse error: ") + parseError.c_str());
+        Serial.println(String("[OTA] GitHub payload: ") + payload);
+        String errorMessage = String("JSON parse error: ") + parseError.c_str();
+        errorMessage += String("; length=") + payload.length();
+        if (!payload.isEmpty()) {
+            errorMessage += String("; data=\"") + payload.substring(0, 120) + "\"";
+        }
+        return {false, "", "", errorMessage};
     }
 
     const String latestVersion = doc["tag_name"].as<String>();
