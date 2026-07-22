@@ -4,9 +4,9 @@
 #include <HTTPClient.h>
 #include <Update.h>
 
-static constexpr const char* GitHubOwner = "your-github-owner"; // replace with your GitHub owner/user
-static constexpr const char* GitHubRepo = "your-github-repo";   // replace with your repository name
-static constexpr const char* GitHubBinAssetName = "flyradar.bin"; // asset name in GitHub release
+static constexpr const char* GitHubOwner = "jabelpc";
+static constexpr const char* GitHubRepo = "flyradar";
+static constexpr const char* GitHubBinAssetName = "flyradar.bin";
 static constexpr const char* GitHubUserAgent = "FlyRadarOTA/1.0";
 static constexpr const char* CurrentFirmwareVersion = "1.0.0";
 
@@ -25,8 +25,42 @@ static String NormalizeVersion(String version)
     return version;
 }
 
+static int CompareVersions(const String& a, const String& b)
+{
+    const String normalizedA = NormalizeVersion(a);
+    const String normalizedB = NormalizeVersion(b);
+
+    int indexA = 0;
+    int indexB = 0;
+    while (indexA < normalizedA.length() || indexB < normalizedB.length()) {
+        int nextDotA = normalizedA.indexOf('.', indexA);
+        int nextDotB = normalizedB.indexOf('.', indexB);
+
+        if (nextDotA == -1) nextDotA = normalizedA.length();
+        if (nextDotB == -1) nextDotB = normalizedB.length();
+
+        const String partA = normalizedA.substring(indexA, nextDotA);
+        const String partB = normalizedB.substring(indexB, nextDotB);
+
+        const int valueA = partA.toInt();
+        const int valueB = partB.toInt();
+
+        if (valueA < valueB) return -1;
+        if (valueA > valueB) return 1;
+
+        indexA = nextDotA == normalizedA.length() ? normalizedA.length() : nextDotA + 1;
+        indexB = nextDotB == normalizedB.length() ? normalizedB.length() : nextDotB + 1;
+    }
+
+    return 0;
+}
+
 static GitHubReleaseInfo FetchLatestGithubRelease()
 {
+    // If the repo owner/repo are left as placeholders, return a clear error
+    if (String(GitHubOwner) == "your-github-owner" || String(GitHubRepo) == "your-github-repo") {
+        return {false, "", "", "GitHub owner/repo not configured. Set GitHubOwner and GitHubRepo in ConfigurationWebServer.cpp"};
+    }
     HTTPClient http;
     const String apiUrl = String("https://api.github.com/repos/") + GitHubOwner + "/" + GitHubRepo + "/releases/latest";
     http.begin(apiUrl);
@@ -397,19 +431,21 @@ static const char CONFIG_HTML[] PROGMEM = R"(
                         value="Save"
                         class="bg-green-500 text-black mt-4 px-4 py-3 text-lg sm:text-base sm:px-2 sm:py-0 self-start cursor-pointer">
 
-                        <div id="result" class="mt-4 px-1 sm:px-10"></div>
+                    <div id="result" class="mt-4 px-1 sm:px-10"></div>
                 </div>
             </form>
-            <fieldset class="border border-green-500 p-5 w-full max-w-2xl mx-auto sm:m-10 mt-4">
-                <legend class="px-2">Firmware Update</legend>
-                <div class="flex flex-col gap-3">
-                    <div id="updateStatus">Vérification de mise à jour...</div>
-                    <button id="updateButton" type="button" class="bg-green-500 text-black px-4 py-3 text-lg sm:text-base sm:px-2 sm:py-0 self-start cursor-pointer hidden">
-                        Mettre à jour vers <span id="updateVersion"></span>
-                    </button>
-                    <div id="updateResult" class="mt-2"></div>
-                </div>
-            </fieldset>        </fieldset>
+        </fieldset>
+
+        <fieldset class="border border-green-500 p-5 w-full max-w-2xl mx-auto sm:m-10 mt-4">
+            <legend class="px-2">Firmware Update</legend>
+            <div class="flex flex-col gap-3">
+                <div id="updateStatus">Vérification de mise à jour...</div>
+                <button id="updateButton" type="button" class="bg-green-500 text-black px-4 py-3 text-lg sm:text-base sm:px-2 sm:py-0 self-start cursor-pointer hidden">
+                    Mettre à jour vers <span id="updateVersion"></span>
+                </button>
+                <div id="updateResult" class="mt-2"></div>
+            </div>
+        </fieldset>
 
         <script>
             document.getElementById('cfg').addEventListener('submit', function(e) {
@@ -564,7 +600,8 @@ void ConfigurationWebServer::Initialise() {
             return;
         }
 
-        const bool updateAvailable = NormalizeVersion(release.latestVersion) != NormalizeVersion(CurrentFirmwareVersion);
+        const int cmp = CompareVersions(release.latestVersion, CurrentFirmwareVersion);
+        const bool updateAvailable = cmp > 0;
         const String payload = String("{\"success\":true,\"updateAvailable\":") + (updateAvailable ? "true" : "false") +
             String(",\"currentVersion\":\"") + CurrentFirmwareVersion + String("\",\"latestVersion\":\"") + release.latestVersion + String("\"}");
         request->send(200, "application/json", payload);
@@ -579,7 +616,7 @@ void ConfigurationWebServer::Initialise() {
             return;
         }
 
-        if (NormalizeVersion(release.latestVersion) == NormalizeVersion(CurrentFirmwareVersion)) {
+        if (CompareVersions(release.latestVersion, CurrentFirmwareVersion) <= 0) {
             request->send(200, "text/plain", "Aucune mise à jour disponible.");
             return;
         }
