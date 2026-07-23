@@ -2,7 +2,6 @@
   📡 FlyRadar
 </h1>
 <h6 align=center>
-  un mini radar open source pour voir les avions qui passent au dessus de votre tête 
 </h6>
 <p align=center>
   <img src="/docs/images/IMG_5903.gif" alt="drawing" width="400"/>
@@ -44,25 +43,41 @@ Je vous recommande vivement de créer un compte. C'est gratuit et cela permet au
 Vous pouvez vous inscrire sur le site d'OpenSky  [here](https://opensky-network.org) (ou en recherchant simplement « OpenSky » sur votre moteur de recherche).
 Vous trouverez davantage d'informations sur la configuration et l'utilisation du compte dans la section Utilisation de la documentation.
 
-## Assembly
+Ce projet est un fork du projet micro-radar réalisé par AnthonySturdy et consultable sur https://github.com/AnthonySturdy/micro-radar. J'avais envie de le réaliser avec le matériel disponible dans mes tiroirs. J'ai ajouté quelques options de personnalisation et la possibilité de mise à jour du firmware par OTA.
 
-à venir
+<img src="/docs/images/IMG_5898.jpeg" alt="drawing" width="400"/>
+il faut souder ou relier via des cables dupont les pins dans l'ordre suivant: 
+Le projet est construit autour d'un ESP32-C3 (super-mini) et d'un écran LCD 1,28" GC9A01. Il faudra quelques fils à souder ou utiliser des câbles Dupont.
+3V3 // VCC
+GND // GND
+GPIO4 // SCL
+GPIO5 // SDA
+GPIO9 // DC
+  <img src="docs/images/esp32.png" width="45%" />
+  <img src="docs/images/IMG_5899.jpeg" width="45%" />
+</p>
 
-## Usage
+L'assemblage est relativement simple. J'ai utilisé un pistolet à colle chaude. L'écran est collé dans la pièce 'porte écran'. L'esp 32 est également collé au fond de la base: colle en dessous puis un point sur le dessus à l'opposé du port usb.
+- [1.28" Round GC9A01 IPS Display]
+- [ESP32-C3 super-mini]
+- [4 vis M3x15]
+<p align=center>
+Pour l'ESP, n'importe quelle carte ESP32 peut convenir, mais il faudra adapter le câblage.
 
-### Flashing the Firmware
+
+
+Ce projet utilise l'API d'OpenSky pour récupérer les données de vol. Je vous recommande vivement de créer un compte : c'est gratuit et cela permet au radar d'effectuer beaucoup plus de requêtes par jour (environ 4 000 au lieu de 400), ce qui améliore la précision du flux en direct. Cela reste facultatif.
+Inscrivez‑vous sur https://opensky-network.org. Vous trouverez plus d'informations dans la section « Utilisation ».
 
 You'll need [VS Code](https://code.visualstudio.com/) with the [PlatformIO IDE extension](https://marketplace.visualstudio.com/items?itemName=platformio.platformio-ide) installed. Once installed, restart VS Code, open the repository folder, and dependencies will pull in automatically.
 
 Plug the board in via USB-C, then hit the upload button (→) in the bottom status bar. If the board doesn't reboot with the new firmware automatically, hold the BOOT button on the back and press RESET once, then release BOOT.
-
-The board should auto-detect, but if you hit an upload failure, check that the correct board is selected in the status bar. If it still won't upload, try:
-
-- Disconnect and reconnect the USB cable
-- Check that your cable supports data transfer (some USB-C cables are charge-only)
-- Try a different USB port on your computer
-
-Read more about PlatformIO [here](https://docs.platformio.org/en/latest/).
+Soudez ou reliez (Dupont) les broches comme suit :
+ESP32-C3 // LCD 1,28" GC9A01
+<p align="center">
+  <img src="docs/images/esp32.png" width="45%" />
+  <img src="docs/images/IMG_5899.jpeg" width="45%" />
+</p>
 
 ### First Boot
 
@@ -73,15 +88,12 @@ If the hotspot doesn't appear straight away, give it a moment. If it still hasn'
 ### Configuration
 
 Once connected to your network, the radar config is accessible at [http://flyradar.local](http://flyradar.local) from any device on the same network.
-
+Installez [VS Code](https://code.visualstudio.com/) avec l'extension [PlatformIO IDE](https://marketplace.visualstudio.com/items?itemName=platformio.platformio-ide). Ouvrez le projet, PlatformIO installera les dépendances automatiquement.
 Here you can set:
 
 - **Location** (latitude and longitude): the centre point of your radar
 - **Radar radius**: how wide the scan extends (in degrees, 2 degrees is the limit to avoid rate limiting)
 - **Display options**: toggle visual elements
-- **OpenSky credentials**: your client ID and secret (if you've made an account - again, highly recommend!)
-
-<img width="400" alt="image" src="https://github.com/user-attachments/assets/45e6219c-2672-4197-baad-16ae08180b58" />
 
 If you've made an OpenSky account (which I highly recommend), you can find your credentials under your account settings at opensky-network.org. With authentication, you get 4000 requests per day instead of 400, making the live view much more accurate. Read more about the API [here](https://opensky-network.org).
 
@@ -95,10 +107,6 @@ That's it! Once you've configured everything, you should see a live view of all 
 
 > the port is busy or doesn't exist
 
-Restart VS Code *after* plugging in the device. If VS Code was already open, it may default to a stale port from before the device was connected.
-
-If that doesn't work, look for the button with a small "Plug" icon on VS Code's bottom bar (it might say "auto", "cu.usbmodem101", or similar). Click it and select the option that shows your device's name.
-<br/><br/>
 
 > the 3D print failed
 
