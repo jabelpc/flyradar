@@ -11,6 +11,7 @@
 #include "AircraftManager.h"
 #include "DrawHelpers.h"
 #include "ColorTheme.h"
+#include "RadarModeManager.h"
 #include "models/Aircraft.h"
 #include "models/TrackedAircraft.h"
 
@@ -58,6 +59,25 @@ static void SetupOTA()
   Serial.println(WiFi.localIP());
 }
 
+void DrawRadarModePlaceholder(LGFX_Sprite& backbuffer, RadarMode mode, RadarTheme theme)
+{
+  constexpr int CENTRE = SCREEN_SIZE_DIV_2 - 1;
+  constexpr int OUTER = SCREEN_SIZE_DIV_2 - 1;
+  const uint32_t circleColor = ThemeBaseColor(theme, 180);
+  const uint32_t textColor = ThemeBaseColor(theme, 255);
+
+  backbuffer.drawCircle(CENTRE, CENTRE, OUTER, circleColor);
+  backbuffer.drawCircle(CENTRE, CENTRE, OUTER * 2 / 3, circleColor);
+  backbuffer.drawCircle(CENTRE, CENTRE, OUTER / 3, circleColor);
+
+  const char* label = (mode == RadarMode::Vent) ? "VENT" : "NUAGES";
+  backbuffer.setTextSize(2);
+  backbuffer.setTextColor(textColor);
+  backbuffer.drawCentreString(label, CENTRE, CENTRE - 10);
+  backbuffer.setTextSize(1);
+  backbuffer.drawCentreString("Chargement...", CENTRE, CENTRE + 18);
+}
+
 void setup()
 {
   Serial.begin(115200);
@@ -95,6 +115,9 @@ void setup()
   // begin background server for configuration
   configServer.Initialise();
 
+  // restore the last radar mode before drawing
+  RadarModeManager::Initialise();
+
   // initialise aircraft manager
   aircraftManager.Initialise();
 }
@@ -119,7 +142,13 @@ void loop()
     );
   }
 
-  aircraftManager.Draw(backbuffer);
+  const RadarMode currentMode = RadarModeManager::GetRadarMode();
+  if (currentMode == RadarMode::Avions) {
+    aircraftManager.Draw(backbuffer);
+  } else {
+    DrawRadarModePlaceholder(backbuffer, currentMode, aircraftManager.GetTheme());
+  }
+
   backbuffer.pushSprite(0, 0);
 }
 

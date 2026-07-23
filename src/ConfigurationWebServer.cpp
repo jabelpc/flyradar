@@ -1,4 +1,5 @@
 #include "ConfigurationWebServer.h"
+#include "RadarModeManager.h"
 #include <ArduinoJson.h>
 #include <ESPmDNS.h>
 #include <HTTPClient.h>
@@ -390,6 +391,20 @@ static const char CONFIG_HTML[] PROGMEM = R"(
                 </label>
 
                 <label class="flex flex-col sm:flex-row items-start sm:items-center gap-2">
+                    <span>Carte affichée:</span>
+                    <select
+                        id="radarMode"
+                        name="radarMode"
+                        class="flex-1 border border-green-500 bg-gray-900 w-full px-3 py-2 text-lg sm:text-base sm:px-1 sm:py-0">
+                        <option value="0" %RADAR_MODE_AVIONS%>Avions</option>
+                        <option value="1" %RADAR_MODE_VENT%>Vent</option>
+                        <option value="2" %RADAR_MODE_NUAGES%>Nuages</option>
+                    </select>
+                </label>
+
+                <div id="radarModeStatus" class="text-sm text-green-300 mt-1"></div>
+
+                <label class="flex flex-col sm:flex-row items-start sm:items-center gap-2">
                     <span>Color theme:</span>
                     <select
                         name="theme"
@@ -495,6 +510,26 @@ static const char CONFIG_HTML[] PROGMEM = R"(
                 }
             }
 
+            document.getElementById('radarMode').addEventListener('change', async function() {
+                const status = document.getElementById('radarModeStatus');
+                status.textContent = 'Envoi en cours...';
+
+                try {
+                    const response = await fetch('/api/radar-mode', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+                        body: new URLSearchParams({ mode: this.value })
+                    });
+                    const data = await response.json();
+                    if (!response.ok || !data.success) {
+                        throw new Error(data.error || 'Réponse invalide');
+                    }
+                    status.textContent = `Mode affichage : ${data.modeLabel}`;
+                } catch (error) {
+                    status.textContent = `Erreur : ${error}`;
+                }
+            });
+
             document.getElementById('updateButton').addEventListener('click', async function() {
                 const button = document.getElementById('updateButton');
                 const result = document.getElementById('updateResult');
@@ -556,6 +591,10 @@ void ConfigurationWebServer::Initialise() {
         const String circle1 = prefs.getString("circle1", "10");
         const String circle2 = prefs.getString("circle2", "30");
         const String circle3 = prefs.getString("circle3", "50");
+        const uint8_t radarModeRaw = prefs.getUChar("radarMode", 0);
+        const bool radarModeAvions = (radarModeRaw == 0);
+        const bool radarModeVent = (radarModeRaw == 1);
+        const bool radarModeNuages = (radarModeRaw == 2);
         prefs.end();
 
         // mask secret before sending to client
@@ -565,7 +604,7 @@ void ConfigurationWebServer::Initialise() {
         AsyncWebServerResponse* response = request->beginResponse(
             200, "text/html",
             (const uint8_t*)CONFIG_HTML, sizeof(CONFIG_HTML) - 1,
-            [latitude, longitude, radius, openskyClientId, openskySecret, scanlineEnabled, infoTextEnabled, triangleEnabled, northEnabled, poi1Latitude, poi1Longitude, poi1Name, poi1Enabled, poi2Latitude, poi2Longitude, poi2Name, poi2Enabled, poi3Latitude, poi3Longitude, poi3Name, poi3Enabled, theme, circle1, circle2, circle3]
+            [latitude, longitude, radius, openskyClientId, openskySecret, scanlineEnabled, infoTextEnabled, triangleEnabled, northEnabled, poi1Latitude, poi1Longitude, poi1Name, poi1Enabled, poi2Latitude, poi2Longitude, poi2Name, poi2Enabled, poi3Latitude, poi3Longitude, poi3Name, poi3Enabled, theme, circle1, circle2, circle3, radarModeAvions, radarModeVent, radarModeNuages]
             (const String& var) -> String {
                 if (var == "LATITUDE")        return latitude;
                 if (var == "LONGITUDE")       return longitude;
@@ -595,12 +634,45 @@ void ConfigurationWebServer::Initialise() {
                 if (var == "THEME_CYAN")      return theme == "cyan" ? "selected" : "";
                 if (var == "THEME_AMBER")     return theme == "amber" ? "selected" : "";
                 if (var == "THEME_ALTITUDE")  return theme == "altitude" ? "selected" : "";
+                if (var == "RADAR_MODE_AVIONS") return radarModeAvions ? "selected" : "";
+                if (var == "RADAR_MODE_VENT")   return radarModeVent ? "selected" : "";
+                if (var == "RADAR_MODE_NUAGES") return radarModeNuages ? "selected" : "";
                 return "";
             }
         );
         request->send(response);
         }
     );
+
+    server.on("/api/radar-mode", HTTP_GET, [&](AsyncWebServerRequest* request) {
+        Serial.println("[GET] Returning current radar mode...");
+
+        const RadarMode mode = RadarModeManager::GetRadarMode();
+        const String payload = String("{\"success\":true,\"mode\":") + static_cast<uint8_t>(mode) + String(",\"modeLabel\":\"") + RadarModeManager::ToLabel(mode) + String("\"}");
+        request->send(200, "application/json", payload);
+    });
+
+    server.on("/api/radar-mode", HTTP_POST, [&](AsyncWebServerRequest* request) {
+        Serial.println("[POST] Setting radar mode...");
+
+        const AsyncWebParameter* param = request->getParam("mode", true);
+        if (param == nullptr) {
+            request->send(400, "application/json", "{\"success\":false,\"error\":\"Missing mode parameter\"}");
+            return;
+        }
+
+        const String modeValue = param->value();
+        if (modeValue != "0" && modeValue != "1" && modeValue != "2") {
+            request->send(400, "application/json", "{\"success\":false,\"error\":\"Invalid radar mode\"}");
+            return;
+        }
+
+        const RadarMode mode = static_cast<RadarMode>(modeValue.toInt());
+        RadarModeManager::SetRadarMode(mode);
+
+        const String response = String("{\"success\":true,\"mode\":") + static_cast<uint8_t>(mode) + String(",\"modeLabel\":\"") + RadarModeManager::ToLabel(mode) + String("\"}");
+        request->send(200, "application/json", response);
+    });
 
     server.on("/check-update", HTTP_GET, [&](AsyncWebServerRequest* request) {
         Serial.println("[GET] Checking GitHub update...");
