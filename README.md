@@ -5,7 +5,7 @@
   un mini radar open source pour voir les avions qui passent au dessus de votre tête 
 </h6>
 <p align=center>
-  <img src="https://github.com/user-attachments/assets/2ccb2063-d15c-4180-8e3c-ae3a81c814ff" alt="drawing" width="400"/>
+  <img src="/docs/images/IMG_5903.gif" alt="drawing" width="400"/>
 </p>
 <p align=center>
   <a href="#Matériel">MATERIEL</a> - <a href="#assembly">ASSEMBLY</a> - <a href="#usage">USAGE</a> - <a href="#faq">FAQ</a>
