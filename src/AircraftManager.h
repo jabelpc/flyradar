@@ -1,7 +1,7 @@
 #pragma once
 
 #include <map>
-
+#include "AffichageRadar.h"
 #include "models/TrackedAircraft.h"
 #include "ConfigurationWebServer.h"
 #include "OpenSkyAuthTokenHandler.h"
@@ -30,6 +30,9 @@ private:
     bool displayNorth = true;
     RadarTheme theme = RadarTheme::Green;
 
+    //AffichageRadar affichageRadar;
+    AffichageRadar& affichageRadar;
+    
     unsigned long fetchInterval = 0;
     unsigned long lastFetch = 999999;
 
@@ -38,16 +41,28 @@ private:
     HttpRequestManager& http;
     LGFX& tft;
 
-    void DrawRadarCircles(LGFX_Sprite& backbuffer) const;
-    void DrawNorthArrow(LGFX_Sprite& backbuffer) const;
+    //void DrawRadarCircles(LGFX_Sprite& backbuffer) const;
+    //void DrawNorthArrow(LGFX_Sprite& backbuffer) const;
     void DrawPois(LGFX_Sprite& backbuffer) const;
-    std::pair<int, int> ProjectCoordinateToScreen(float predLat, float predLon) const;
+    //std::pair<int, int> ProjectCoordinateToScreen(float predLat, float predLon) const;
     void DrawAircraftInfo(LGFX_Sprite& backbuffer, int x, int y, const TrackedAircraft& tracked, uint32_t color) const;
     void DrawAircraftTriangle(LGFX_Sprite& backbuffer, int x, int y, const TrackedAircraft& tracked, uint32_t color) const;
 
 public:
-    AircraftManager(ConfigurationWebServer& config, OpenSkyAuthTokenHandler& auth, HttpRequestManager& httpManager, LGFX& tftGfx)
-        : configServer(config), authHandler(auth), http(httpManager), tft(tftGfx)
+    //AircraftManager(ConfigurationWebServer& config, OpenSkyAuthTokenHandler& auth, HttpRequestManager& httpManager, LGFX& tftGfx)
+    //    : configServer(config), authHandler(auth), http(httpManager), tft(tftGfx)
+    AircraftManager(
+        ConfigurationWebServer& config,
+        OpenSkyAuthTokenHandler& auth,
+        HttpRequestManager& httpManager,
+        LGFX& tftGfx,
+        AffichageRadar& affichage
+    )
+        :   affichageRadar(affichage),
+            configServer(config),
+            authHandler(auth),
+            http(httpManager),
+            tft(tftGfx)
     {
     }
     ~AircraftManager() = default;
@@ -56,4 +71,14 @@ public:
     void Update();
     void Draw(LGFX_Sprite& backbuffer);
     RadarTheme GetTheme() const { return theme; }
+
+    bool GetDisplayNorth() const
+    {
+        return displayNorth;
+    }
+
+    void DrawSharedPois(LGFX_Sprite& backbuffer) const
+    {
+        DrawPois(backbuffer);
+    }
 };

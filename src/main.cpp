@@ -2,7 +2,7 @@
 #include <ArduinoJson.h>
 #include <WiFiManager.h>
 #include <ArduinoOTA.h>
-
+#include "AffichageRadar.h"
 #include "LGFX.h"
 #include "WiFiManagerHelpers.h"
 #include "ConfigurationWebServer.h"
@@ -14,6 +14,8 @@
 #include "RadarModeManager.h"
 #include "models/Aircraft.h"
 #include "models/TrackedAircraft.h"
+#include "GestionnaireMeteo.h"
+#include "AffichageMeteo.h"
 
 // Optional hard-coded Wi-Fi credentials. Leave both blank to skip pre-baking them and use the setup hotspot instead.
 const char* preconfiguredWifiSsid = "";
@@ -28,9 +30,21 @@ LGFX_Sprite backbuffer(&tft);
 WiFiManager wm;
 ConfigurationWebServer configServer;
 HttpRequestManager http;
+GestionnaireMeteo gestionnaireMeteo(http);
 OpenSkyAuthTokenHandler authHandler(http);
 
-AircraftManager aircraftManager(configServer, authHandler, http, tft);
+AffichageMeteo affichageMeteo;
+
+//AircraftManager aircraftManager(configServer, authHandler, http, tft);
+AffichageRadar affichageRadar;
+
+AircraftManager aircraftManager(
+    configServer,
+    authHandler,
+    http,
+    tft,
+    affichageRadar
+);
 
 static void SetupOTA()
 {
@@ -59,23 +73,47 @@ static void SetupOTA()
   Serial.println(WiFi.localIP());
 }
 
-void DrawRadarModePlaceholder(LGFX_Sprite& backbuffer, RadarMode mode, RadarTheme theme)
+void DrawRadarModePlaceholder(
+    LGFX_Sprite& backbuffer,
+    RadarMode mode,
+    RadarTheme theme
+)
 {
-  constexpr int CENTRE = SCREEN_SIZE_DIV_2 - 1;
-  constexpr int OUTER = SCREEN_SIZE_DIV_2 - 1;
-  const uint32_t circleColor = ThemeBaseColor(theme, 180);
-  const uint32_t textColor = ThemeBaseColor(theme, 255);
+    constexpr int CENTRE = SCREEN_SIZE_DIV_2 - 1;
 
-  backbuffer.drawCircle(CENTRE, CENTRE, OUTER, circleColor);
-  backbuffer.drawCircle(CENTRE, CENTRE, OUTER * 2 / 3, circleColor);
-  backbuffer.drawCircle(CENTRE, CENTRE, OUTER / 3, circleColor);
+    affichageRadar.dessinerFond(
+      backbuffer,
+      aircraftManager.GetDisplayNorth() 
+    );
 
-  const char* label = (mode == RadarMode::Vent) ? "VENT" : "NUAGES";
-  backbuffer.setTextSize(2);
-  backbuffer.setTextColor(textColor);
-  backbuffer.drawCentreString(label, CENTRE, CENTRE - 10);
-  backbuffer.setTextSize(1);
-  backbuffer.drawCentreString("Chargement...", CENTRE, CENTRE + 18);
+    aircraftManager.DrawSharedPois(backbuffer);
+
+    const uint32_t textColor =
+        ThemeBaseColor(theme, 255);
+
+    const char* label =
+        mode == RadarMode::Vent
+        ? "VENT"
+        : "NUAGES";
+
+    backbuffer.setTextSize(2);
+    backbuffer.setTextColor(textColor);
+
+    backbuffer.drawCentreString(
+        label,
+        CENTRE,
+        CENTRE - 10
+    );
+
+    backbuffer.setTextSize(1);
+
+    backbuffer.drawCentreString(
+        gestionnaireMeteo.donneesDisponibles()
+            ? "Donnees disponibles"
+            : "Chargement...",
+        CENTRE,
+        CENTRE + 18
+    );
 }
 
 void setup()
@@ -117,6 +155,40 @@ void setup()
 
   // restore the last radar mode before drawing
   RadarModeManager::Initialise();
+  // initialise weather manager 
+  gestionnaireMeteo.initialiser();
+  // définir la zone 
+  const float latitudeCentre =
+    configServer.GetStoredString("latitude").toFloat();
+
+  const float longitudeCentre =
+    configServer.GetStoredString("longitude").toFloat();
+
+  const float rayonDegres =
+    configServer.GetStoredString("radius").toFloat();
+
+  const float rayonKm = rayonDegres * 111.32f;
+
+  gestionnaireMeteo.definirZone(
+    latitudeCentre,
+    longitudeCentre,
+    rayonKm
+  );
+  
+  Serial.println();
+  Serial.println("===== Grille météo =====");
+
+  for (uint8_t i = 0; i < gestionnaireMeteo.obtenirNombrePoints(); i++)
+  {
+    const auto& p = gestionnaireMeteo.obtenirPoint(i);
+
+    Serial.printf(
+        "%02u : %.5f  %.5f\n",
+        i,
+        p.latitude,
+        p.longitude
+    );
+  }
 
   // initialise aircraft manager
   aircraftManager.Initialise();
@@ -126,7 +198,8 @@ void loop()
 {
   ArduinoOTA.handle();
   aircraftManager.Update();
-
+  // ajout pour le vent
+  gestionnaireMeteo.mettreAJourSiNecessaire();
   // draw cycle
   backbuffer.fillScreen(lgfx::color888(0, 0, 0));
 
@@ -142,12 +215,62 @@ void loop()
     );
   }
 
-  const RadarMode currentMode = RadarModeManager::GetRadarMode();
-  if (currentMode == RadarMode::Avions) {
+const RadarMode currentMode = RadarModeManager::GetRadarMode();
+
+if (currentMode == RadarMode::Avions)
+{
     aircraftManager.Draw(backbuffer);
-  } else {
-    DrawRadarModePlaceholder(backbuffer, currentMode, aircraftManager.GetTheme());
-  }
+}
+else if (currentMode == RadarMode::Vent)
+{
+    affichageRadar.dessinerFond(
+        backbuffer,
+        aircraftManager.GetDisplayNorth()
+    );
+
+    aircraftManager.DrawSharedPois(backbuffer);
+
+    gestionnaireMeteo.dessinerVent(
+        backbuffer,
+        affichageRadar
+    );
+}
+else if (currentMode == RadarMode::Nuages)
+{
+    affichageRadar.dessinerFond(
+        backbuffer,
+        aircraftManager.GetDisplayNorth()
+    );
+
+    affichageMeteo.dessinerNuages(
+        backbuffer,
+        gestionnaireMeteo,
+        affichageRadar
+    );
+
+    aircraftManager.DrawSharedPois(backbuffer);
+
+    if (!gestionnaireMeteo.donneesDisponibles())
+    {
+        constexpr int CENTRE =
+            SCREEN_SIZE_DIV_2 - 1;
+
+        backbuffer.setTextSize(1);
+
+        backbuffer.setTextColor(
+            ThemeBaseColor(
+                aircraftManager.GetTheme(),
+                255
+            )
+        );
+
+        backbuffer.drawCentreString(
+            "Chargement...",
+            CENTRE,
+            CENTRE + 18
+        );
+    }
+}
 
   backbuffer.pushSprite(0, 0);
 }

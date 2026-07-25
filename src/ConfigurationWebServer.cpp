@@ -82,7 +82,8 @@ static GitHubReleaseInfo FetchLatestGithubRelease()
     }
     http.end();
 
-    DynamicJsonDocument doc(8192);
+    //DynamicJsonDocument doc(8192);  ancien formule
+    JsonDocument doc;
     const DeserializationError parseError = deserializeJson(doc, payload);
     if (parseError) {
         Serial.println(String("[OTA] GitHub JSON parse error: ") + parseError.c_str());
