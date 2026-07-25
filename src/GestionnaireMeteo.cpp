@@ -365,8 +365,8 @@ void GestionnaireMeteo::calculerGrille()
     constexpr float degresParKmLatitude =
         1.0f / KilometresParDegreLatitude;
 
-    constexpr float FacteurHorizontal = 0.60f;
-    constexpr float FacteurVertical = 0.80f;
+    constexpr float FacteurHorizontal = 1.0f; // 0.60f;
+    constexpr float FacteurVertical = 1.0f; // 0.80f;
 
     const float rayonHorizontalKm =
         rayonZoneKm * FacteurHorizontal;
@@ -558,6 +558,28 @@ void GestionnaireMeteo::dessinerVent(
             point.latitude,
             point.longitude
         );
+
+        /*
+        * La grille météo couvre désormais 100 % du radar.
+        * Seules les flèches du vent sont rapprochées du centre
+        * pour éviter qu'elles touchent les bords de l'écran.
+        */
+        constexpr float FacteurAffichageHorizontal = 0.60f;
+        constexpr float FacteurAffichageVertical = 0.80f;
+
+        constexpr int CentreRadar = 119;
+
+        x = CentreRadar
+            + static_cast<int>(
+                (x - CentreRadar)
+                * FacteurAffichageHorizontal
+            );
+
+        y = CentreRadar
+            + static_cast<int>(
+                (y - CentreRadar)
+                * FacteurAffichageVertical
+            );
 
         if (!radar.pointDansEcran(x, y))
             continue;

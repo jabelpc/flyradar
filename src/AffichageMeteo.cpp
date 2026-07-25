@@ -1,5 +1,5 @@
 #include "AffichageMeteo.h"
-
+#include "PaletteNuages.h"
 #include <cmath>
 
 namespace
@@ -283,14 +283,14 @@ if (millis() - dernierAffichage > 5000)
                     fractionY
                 );
 
-            if (couverture < 5.0f)
+            //if (couverture < 5.0f)
+            //    continue;
+            const RenduNuage rendu =
+                PaletteNuages::obtenirRendu(couverture);
+
+            if (rendu.opacite == 0)
                 continue;
 
-            /*
-             * Tramage :
-             * les faibles couvertures dessinent peu de blocs ;
-             * les fortes couvertures remplissent davantage la zone.
-             */
             const uint8_t seuilTramage =
                 MatriceTramage[
                     (y / TailleBloc) % 4
@@ -298,29 +298,10 @@ if (millis() - dernierAffichage > 5000)
                     (x / TailleBloc) % 4
                 ];
 
-            const float niveauTramage =
-                couverture
-                * 16.0f
-                / 100.0f;
-
-            if (niveauTramage <= seuilTramage)
+            if (rendu.opacite <= seuilTramage)
                 continue;
 
-            const uint8_t luminosite =
-                static_cast<uint8_t>(
-                    limiter(
-                        35.0f + couverture * 1.45f,
-                        35.0f,
-                        180.0f
-                    )
-                );
-
-            const uint32_t couleur =
-                lgfx::color888(
-                    luminosite,
-                    luminosite,
-                    luminosite
-                );
+            const uint32_t couleur = rendu.couleur;
 
             backbuffer.fillRect(
                 x,

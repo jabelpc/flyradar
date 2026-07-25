@@ -3,7 +3,7 @@
 #include "LGFX.h"
 #include "ColorTheme.h"
 
-void DrawScanLines(LGFX_Sprite& buf, const int x0, const int y0, const int x1, const int y1, const int thickness, const int trailBrightness, const int spacing, RadarTheme theme = RadarTheme::Green)
+inline void DrawScanLines(LGFX_Sprite& buf, const int x0, const int y0, const int x1, const int y1, const int thickness, const int trailBrightness, const int spacing, RadarTheme theme = RadarTheme::Green)
 {
     float dx = x1 - x0;
     float dy = y1 - y0;

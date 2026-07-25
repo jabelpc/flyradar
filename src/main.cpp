@@ -2,6 +2,7 @@
 #include <ArduinoJson.h>
 #include <WiFiManager.h>
 #include <ArduinoOTA.h>
+
 #include "AffichageRadar.h"
 #include "LGFX.h"
 #include "WiFiManagerHelpers.h"
@@ -16,13 +17,15 @@
 #include "models/TrackedAircraft.h"
 #include "GestionnaireMeteo.h"
 #include "AffichageMeteo.h"
+#include "MoteurCouchesRadar.h"
 
-// Optional hard-coded Wi-Fi credentials. Leave both blank to skip pre-baking them and use the setup hotspot instead.
+// Identifiants Wi-Fi facultatifs.
+// Laisser les deux champs vides pour utiliser le point d'accès de configuration.
 const char* preconfiguredWifiSsid = "";
 const char* preconfiguredWifiPassword = "";
 
 constexpr int SCREEN_SIZE = 240;
-constexpr int SCREEN_SIZE_DIV_2 = (SCREEN_SIZE / 2);
+constexpr int SCREEN_SIZE_DIV_2 = SCREEN_SIZE / 2;
 
 LGFX tft;
 LGFX_Sprite backbuffer(&tft);
@@ -30,12 +33,11 @@ LGFX_Sprite backbuffer(&tft);
 WiFiManager wm;
 ConfigurationWebServer configServer;
 HttpRequestManager http;
+
 GestionnaireMeteo gestionnaireMeteo(http);
 OpenSkyAuthTokenHandler authHandler(http);
 
 AffichageMeteo affichageMeteo;
-
-//AircraftManager aircraftManager(configServer, authHandler, http, tft);
 AffichageRadar affichageRadar;
 
 AircraftManager aircraftManager(
@@ -46,31 +48,59 @@ AircraftManager aircraftManager(
     affichageRadar
 );
 
+MoteurCouchesRadar moteurCouchesRadar(
+    configServer,
+    aircraftManager,
+    gestionnaireMeteo,
+    affichageMeteo,
+    affichageRadar
+);
+
 static void SetupOTA()
 {
-  ArduinoOTA.setHostname("flyradar");
+    ArduinoOTA.setHostname("flyradar");
 
-  ArduinoOTA.onStart([]() {
-    Serial.println("[OTA] Start");
-  });
+    ArduinoOTA.onStart([]()
+    {
+        Serial.println("[OTA] Start");
+    });
 
-  ArduinoOTA.onEnd([]() {
-    Serial.println("[OTA] End");
-  });
+    ArduinoOTA.onEnd([]()
+    {
+        Serial.println("[OTA] End");
+    });
 
-  ArduinoOTA.onError([](ota_error_t error) {
-    Serial.printf("[OTA] Error[%u]: ", error);
-    if (error == OTA_AUTH_ERROR) Serial.println("Authentication Failed");
-    else if (error == OTA_BEGIN_ERROR) Serial.println("Begin Failed");
-    else if (error == OTA_CONNECT_ERROR) Serial.println("Connect Failed");
-    else if (error == OTA_RECEIVE_ERROR) Serial.println("Receive Failed");
-    else if (error == OTA_END_ERROR) Serial.println("End Failed");
-  });
+    ArduinoOTA.onError([](ota_error_t error)
+    {
+        Serial.printf("[OTA] Error[%u]: ", error);
 
-  ArduinoOTA.begin();
-  Serial.println("[OTA] Ready");
-  Serial.print("[OTA] IP: ");
-  Serial.println(WiFi.localIP());
+        if (error == OTA_AUTH_ERROR)
+        {
+            Serial.println("Authentication Failed");
+        }
+        else if (error == OTA_BEGIN_ERROR)
+        {
+            Serial.println("Begin Failed");
+        }
+        else if (error == OTA_CONNECT_ERROR)
+        {
+            Serial.println("Connect Failed");
+        }
+        else if (error == OTA_RECEIVE_ERROR)
+        {
+            Serial.println("Receive Failed");
+        }
+        else if (error == OTA_END_ERROR)
+        {
+            Serial.println("End Failed");
+        }
+    });
+
+    ArduinoOTA.begin();
+
+    Serial.println("[OTA] Ready");
+    Serial.print("[OTA] IP: ");
+    Serial.println(WiFi.localIP());
 }
 
 void DrawRadarModePlaceholder(
@@ -82,8 +112,8 @@ void DrawRadarModePlaceholder(
     constexpr int CENTRE = SCREEN_SIZE_DIV_2 - 1;
 
     affichageRadar.dessinerFond(
-      backbuffer,
-      aircraftManager.GetDisplayNorth() 
+        backbuffer,
+        aircraftManager.GetDisplayNorth()
     );
 
     aircraftManager.DrawSharedPois(backbuffer);
@@ -93,8 +123,8 @@ void DrawRadarModePlaceholder(
 
     const char* label =
         mode == RadarMode::Vent
-        ? "VENT"
-        : "NUAGES";
+            ? "VENT"
+            : "NUAGES";
 
     backbuffer.setTextSize(2);
     backbuffer.setTextColor(textColor);
@@ -118,160 +148,177 @@ void DrawRadarModePlaceholder(
 
 void setup()
 {
-  Serial.begin(115200);
-  // delay(1000); // avoids immediate serial output being cut off - uncomment if needed
+    Serial.begin(115200);
 
-  // initialise LGFX + screen
-  tft.init();
-  tft.invertDisplay(true);
-  // Note : pas de digitalWrite manuel ici. Sur le montage d'origine, le GPIO3
-  // pilotait le rétro-éclairage. Ici, le GPIO3 est câblé au RST de l'écran
-  // (géré en interne par LovyanGFX via cfg.pin_rst) et le rétro-éclairage
-  // (BLK) est câblé directement en 3V3.
+    /*
+     * Initialisation de l'écran.
+     */
+    tft.init();
+    tft.invertDisplay(true);
 
-  backbuffer.setColorDepth(8);
-  backbuffer.createSprite(SCREEN_SIZE, SCREEN_SIZE);
-
-  // establish WiFi connection
-  const RadarTheme bootTheme = ParseTheme(configServer.GetStoredString("theme"));
-  tft.fillScreen(lgfx::color888(0, 0, 0));
-  tft.setTextColor(ThemeBaseColor(bootTheme, 255));
-  tft.drawCentreString("Connecting to WiFi...", SCREEN_SIZE / 2, SCREEN_SIZE / 2);
-
-  WiFiManagerHelpers::ConfigureWiFiManager(wm, tft);
-
-  if (strlen(preconfiguredWifiSsid) > 0) {
-    WiFi.begin(preconfiguredWifiSsid, preconfiguredWifiPassword);
-    WiFi.waitForConnectResult();
-  }
-
-  wm.autoConnect(WiFiManagerHelpers::WiFiManagerName);
-
-  // enable OTA updates over WiFi
-  SetupOTA();
-
-  // begin background server for configuration
-  configServer.Initialise();
-
-  // restore the last radar mode before drawing
-  RadarModeManager::Initialise();
-  // initialise weather manager 
-  gestionnaireMeteo.initialiser();
-  // définir la zone 
-  const float latitudeCentre =
-    configServer.GetStoredString("latitude").toFloat();
-
-  const float longitudeCentre =
-    configServer.GetStoredString("longitude").toFloat();
-
-  const float rayonDegres =
-    configServer.GetStoredString("radius").toFloat();
-
-  const float rayonKm = rayonDegres * 111.32f;
-
-  gestionnaireMeteo.definirZone(
-    latitudeCentre,
-    longitudeCentre,
-    rayonKm
-  );
-  
-  Serial.println();
-  Serial.println("===== Grille météo =====");
-
-  for (uint8_t i = 0; i < gestionnaireMeteo.obtenirNombrePoints(); i++)
-  {
-    const auto& p = gestionnaireMeteo.obtenirPoint(i);
-
-    Serial.printf(
-        "%02u : %.5f  %.5f\n",
-        i,
-        p.latitude,
-        p.longitude
+    /*
+     * Sur ce montage, le GPIO3 est relié à RST.
+     * Il est géré par LovyanGFX avec cfg.pin_rst.
+     * Le rétroéclairage BLK est directement relié au 3V3.
+     */
+    backbuffer.setColorDepth(8);
+    backbuffer.createSprite(
+        SCREEN_SIZE,
+        SCREEN_SIZE
     );
-  }
 
-  // initialise aircraft manager
-  aircraftManager.Initialise();
+    /*
+     * Écran de connexion Wi-Fi.
+     */
+    const RadarTheme bootTheme =
+        ParseTheme(
+            configServer.GetStoredString("theme")
+        );
+
+    tft.fillScreen(
+        lgfx::color888(0, 0, 0)
+    );
+
+    tft.setTextColor(
+        ThemeBaseColor(bootTheme, 255)
+    );
+
+    tft.drawCentreString(
+        "Connecting to WiFi...",
+        SCREEN_SIZE / 2,
+        SCREEN_SIZE / 2
+    );
+
+    WiFiManagerHelpers::ConfigureWiFiManager(
+        wm,
+        tft
+    );
+
+    /*
+     * Utilisation des identifiants intégrés si présents.
+     */
+    if (strlen(preconfiguredWifiSsid) > 0)
+    {
+        WiFi.begin(
+            preconfiguredWifiSsid,
+            preconfiguredWifiPassword
+        );
+
+        WiFi.waitForConnectResult();
+    }
+
+    /*
+     * Sinon, utilisation du portail WiFiManager.
+     */
+    wm.autoConnect(
+        WiFiManagerHelpers::WiFiManagerName
+    );
+
+    /*
+     * Activation des mises à jour OTA.
+     */
+    SetupOTA();
+
+    /*
+     * Démarrage du serveur de configuration.
+     */
+    configServer.Initialise();
+
+    /*
+     * Restauration du dernier mode radar sélectionné.
+     */
+    RadarModeManager::Initialise();
+
+    /*
+     * Initialisation de la météo.
+     */
+    gestionnaireMeteo.initialiser();
+
+    /*
+     * Définition de la zone météo à partir
+     * de la configuration du radar.
+     */
+    const float latitudeCentre =
+        configServer
+            .GetStoredString("latitude")
+            .toFloat();
+
+    const float longitudeCentre =
+        configServer
+            .GetStoredString("longitude")
+            .toFloat();
+
+    const float rayonDegres =
+        configServer
+            .GetStoredString("radius")
+            .toFloat();
+
+    const float rayonKm =
+        rayonDegres * 111.32f;
+
+    gestionnaireMeteo.definirZone(
+        latitudeCentre,
+        longitudeCentre,
+        rayonKm
+    );
+
+    /*
+     * Affichage de la grille météo dans le moniteur série.
+     */
+    Serial.println();
+    Serial.println("===== Grille météo =====");
+
+    for (
+        uint8_t i = 0;
+        i < gestionnaireMeteo.obtenirNombrePoints();
+        i++
+    )
+    {
+        const auto& point =
+            gestionnaireMeteo.obtenirPoint(i);
+
+        Serial.printf(
+            "%02u : %.5f  %.5f\n",
+            i,
+            point.latitude,
+            point.longitude
+        );
+    }
+
+    /*
+     * Initialisation du gestionnaire d'avions.
+     */
+    aircraftManager.Initialise();
 }
 
 void loop()
 {
-  ArduinoOTA.handle();
-  aircraftManager.Update();
-  // ajout pour le vent
-  gestionnaireMeteo.mettreAJourSiNecessaire();
-  // draw cycle
-  backbuffer.fillScreen(lgfx::color888(0, 0, 0));
+    /*
+     * Gestion des services.
+     */
+    ArduinoOTA.handle();
 
-  String renderScanlines = configServer.GetStoredString("scanline");
-  if (renderScanlines.isEmpty() || renderScanlines == "true") {
-    DrawScanLines(backbuffer,
-      SCREEN_SIZE_DIV_2 - 1,
-      SCREEN_SIZE_DIV_2 - 1,
-      SCREEN_SIZE_DIV_2 - 1 + (std::cos(millis() / 3000.0f) * SCREEN_SIZE_DIV_2),
-      SCREEN_SIZE_DIV_2 - 1 + (std::sin(millis() / 3000.0f) * SCREEN_SIZE_DIV_2),
-      20, 128, 5,
-      aircraftManager.GetTheme()
-    );
-  }
+    aircraftManager.Update();
 
-const RadarMode currentMode = RadarModeManager::GetRadarMode();
+    gestionnaireMeteo.mettreAJourSiNecessaire();
 
-if (currentMode == RadarMode::Avions)
-{
-    aircraftManager.Draw(backbuffer);
-}
-else if (currentMode == RadarMode::Vent)
-{
-    affichageRadar.dessinerFond(
+    /*
+     * Lecture du mode sélectionné.
+     */
+    const RadarMode mode =
+        RadarModeManager::GetRadarMode();
+
+    /*
+     * Construction complète de l'image
+     * par le moteur de couches.
+     */
+    moteurCouchesRadar.dessiner(
         backbuffer,
-        aircraftManager.GetDisplayNorth()
+        mode
     );
 
-    aircraftManager.DrawSharedPois(backbuffer);
-
-    gestionnaireMeteo.dessinerVent(
-        backbuffer,
-        affichageRadar
-    );
+    /*
+     * Envoi de l'image vers l'écran.
+     */
+    backbuffer.pushSprite(0, 0);
 }
-else if (currentMode == RadarMode::Nuages)
-{
-    affichageRadar.dessinerFond(
-        backbuffer,
-        aircraftManager.GetDisplayNorth()
-    );
-
-    affichageMeteo.dessinerNuages(
-        backbuffer,
-        gestionnaireMeteo,
-        affichageRadar
-    );
-
-    aircraftManager.DrawSharedPois(backbuffer);
-
-    if (!gestionnaireMeteo.donneesDisponibles())
-    {
-        constexpr int CENTRE =
-            SCREEN_SIZE_DIV_2 - 1;
-
-        backbuffer.setTextSize(1);
-
-        backbuffer.setTextColor(
-            ThemeBaseColor(
-                aircraftManager.GetTheme(),
-                255
-            )
-        );
-
-        backbuffer.drawCentreString(
-            "Chargement...",
-            CENTRE,
-            CENTRE + 18
-        );
-    }
-}
-
-  backbuffer.pushSprite(0, 0);
-}
-
